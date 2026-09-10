@@ -33,8 +33,11 @@
   //   子:  [S]/[O] #c<issue>-<n> <題>  または  [S]/[O] #p<issue>-c<子issue> <題>
   //        [S] = Sonnet、それ以外 (= 既定) は Opus
   //   [旧] #p… は交代前の旧親 (何もしない)
+  // サイドバーの行頭に付く状態アイコンは icon font の私用領域文字 (例 U+E07F) として textContent に混ざる。
+  // ゼロ幅文字と一緒に落としてから規約を読む (c213 の行がこれで規約外に見えていた — 実機 2026-09-10)
+  const cleanTitle = (t) => String(t || '').replace(/[\uE000-\uF8FF\u200B-\u200D\u2060\uFEFF]/g, '').replace(/\s+/g, ' ').trim();
   const parseTitle = (t) => {
-    const s = String(t || '').trim();
+    const s = cleanTitle(t);
     const m0 = s.match(/^\[(S|O|旧)\]\s*/i);
     const tag = m0 ? m0[1].toUpperCase() : null;
     const rest = m0 ? s.slice(m0[0].length) : s;
@@ -90,9 +93,9 @@
   }
 
   const linkTitle = (a) => {
-    if (a.getAttribute('aria-label')) return a.getAttribute('aria-label').trim().slice(0, 80);
-    const c = a.cloneNode(true); c.querySelectorAll('.ccw-open').forEach((x) => x.remove());
-    return (c.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    if (a.getAttribute('aria-label')) return cleanTitle(a.getAttribute('aria-label')).slice(0, 80);
+    const c = a.cloneNode(true); c.querySelectorAll('.ccw-open, .ccw-group').forEach((x) => x.remove());
+    return cleanTitle(c.textContent).slice(0, 80);
   };
 
   // ---- storage --------------------------------------------------------------
