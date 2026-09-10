@@ -157,8 +157,13 @@
     const isRunning = () => [...document.querySelectorAll('button[aria-label]')].some((b) => /^(停止|Stop)$/i.test(b.getAttribute('aria-label') || ''));
     const status = () => { try { window.top.postMessage({ type: 'ccw:status', running: isRunning(), model: currentModel(), enforce: enforceState }, ORIGIN); } catch { } };
     setInterval(status, 2000);
-    report(); sleep(2000).then(enforceHere);
-    setInterval(() => { if (location.pathname !== last) { last = location.pathname; report(); enforceHere(); } }, 1000);
+    // 開いた直後は題 (ヘッダ) も composer もまだ無い → 最初の 30 秒は 1 秒おき、その後は 15 秒おきに見に行く
+    // (15 秒おきだけだと、開き直したペインが切り替わるまで 16 秒かかり「切り替わらない」に見えた — 実機ログ 2026-09-10)
+    let fastUntil = Date.now() + 30000;
+    const burst = () => { fastUntil = Date.now() + 30000; };
+    report(); burst();
+    setInterval(() => { if (location.pathname !== last) { last = location.pathname; report(); burst(); } }, 1000);
+    setInterval(() => { if (Date.now() < fastUntil) enforceHere(); }, 1000);
     setInterval(enforceHere, 15000);   // 決着がつくまで呼び直す (決着後は即 return)
     return;
   }
@@ -426,10 +431,12 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
     if (state.panes.length) render();
     // サイドバーが出そろってから (React の初回描画待ち)
     for (let i = 0; i < 40 && !sidebarSessions().length; i++) await sleep(250);
-    decorate(); enforceMain();
-    // SPA 遷移 (サイドバーのクリック等) でメインが変わったらモデル判定をやり直す
+    decorate();
+    // 遷移直後は 1 秒おき (30 秒)、その後は 15 秒おきに判定を見に行く (ペイン側と同じ)
+    let fastUntil = Date.now() + 30000;
     let lastPath = location.pathname;
-    setInterval(() => { if (location.pathname !== lastPath) { lastPath = location.pathname; decorate(); enforceMain(); } }, 1000);
+    setInterval(() => { if (location.pathname !== lastPath) { lastPath = location.pathname; decorate(); fastUntil = Date.now() + 30000; } }, 1000);
+    setInterval(() => { if (Date.now() < fastUntil) enforceMain(); }, 1000);
     setInterval(enforceMain, 15000);   // 決着がつくまで呼び直す (決着後は即 return)
   })();
 
