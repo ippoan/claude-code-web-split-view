@@ -62,28 +62,29 @@
     return (b.getAttribute('aria-label') || '').replace(/、セッション名を変更$/, '').replace(/,?\s*rename( session)?$/i, '').trim();
   };
   let enforcing = false;
-  const enforced = new Set();   // このページで既に判定したセッション path
+  const enforced = new Set();   // 決着がついた (期待どおりだった / 切り替えた / 規約外だった) セッション path
+  // 決着がつくまで呼び直される前提 (15 秒おきの ticker + 遷移時)。題や composer がまだ無い回は何も決めない
+  // (v0.0.8〜0.0.10 は 1 回きりで、描画前に「規約外」と決めて二度と見なかった → 切り替わらないペインが出た)
   async function enforceModel(path, title, why) {
-    if (!path || enforced.has(path)) return null;
+    if (!path || enforced.has(path) || enforcing) return null;
+    if (!title) return null;                                   // 題がまだ取れていない → 次回
     const want = parseTitle(title).model;
-    if (!want) { enforced.add(path); return null; }
-    // composer が出るまで待つ
-    for (let i = 0; i < 40 && !modelButton(); i++) await sleep(250);
+    if (!want) { enforced.add(path); return null; }            // 規約外 → 触らない (決着)
     const cur = currentModel();
-    if (!cur) return null;
-    enforced.add(path);
+    if (!cur) return null;                                     // composer がまだ無い → 次回
     const rule = MODEL_RULES[want];
-    if (rule.ok.test(cur) || enforcing) return null;
+    if (rule.ok.test(cur)) { enforced.add(path); return null; } // 期待どおり (決着)
     enforcing = true;
     try {
       const btn = modelButton(); btn.click();
       await sleep(600);
       const item = [...document.querySelectorAll('[role="menuitemradio"]')].find((e) => rule.pick.test((e.innerText || '').trim()));
-      if (!item) { btn.click(); console.warn('[ccw] model menu item not found for', want); return null; }
+      if (!item) { btn.click(); console.warn('[ccw] model menu item not found for', want, '(retry later)'); return null; }
       item.click();
       await sleep(600);
       const after = currentModel();
       console.log('[ccw] model', cur, '->', after, 'by title', JSON.stringify(title), why);
+      if (after && rule.ok.test(after)) enforced.add(path);   // 切り替わった (決着)。失敗なら次回
       return after;
     } finally { enforcing = false; }
   }
@@ -122,9 +123,10 @@
     // ペイン内で別セッションへ遷移したら親に知らせる (復元用)。SPA なので pathname を見張る
     let last = location.pathname;
     const report = () => { window.top.postMessage({ type: 'ccw:nav', path: location.pathname, title: document.title }, ORIGIN); };
-    const enforceHere = async () => { const p = sessionPath(location.href); if (!p) return; for (let i = 0; i < 40 && !headerTitle(); i++) await sleep(250); enforceModel(p, headerTitle(), 'pane'); };
-    report(); enforceHere();
+    const enforceHere = () => { const p = sessionPath(location.href); if (p) enforceModel(p, headerTitle(), 'pane'); };
+    report(); sleep(2000).then(enforceHere);
     setInterval(() => { if (location.pathname !== last) { last = location.pathname; report(); enforceHere(); } }, 1000);
+    setInterval(enforceHere, 15000);   // 決着がつくまで呼び直す (決着後は即 return)
     return;
   }
 
@@ -308,10 +310,9 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
       openPane(x.path, x.title);
     }
   }
-  // メイン側のモデル強制 (composer とタイトルが出てから)
-  async function enforceMain() {
+  // メイン側のモデル強制 (決着がつくまで ticker から呼び直される)
+  function enforceMain() {
     const main = sessionPath(location.href); if (!main) return;
-    for (let i = 0; i < 40 && !sessionTitleFor(main); i++) await sleep(250);
     enforceModel(main, sessionTitleFor(main), 'main');
   }
 
@@ -381,6 +382,7 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
     // SPA 遷移 (サイドバーのクリック等) でメインが変わったらモデル判定をやり直す
     let lastPath = location.pathname;
     setInterval(() => { if (location.pathname !== lastPath) { lastPath = location.pathname; decorate(); enforceMain(); } }, 1000);
+    setInterval(enforceMain, 15000);   // 決着がつくまで呼び直す (決着後は即 return)
   })();
 
   // 試験・デバッグ用の口 (javascript_tool から window.ccwSplit.open('/code/session_…'))
