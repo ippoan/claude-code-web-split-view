@@ -83,8 +83,8 @@ html.ccw-active #root { width: calc(100% - var(--ccw-w, 50vw)) !important; }
 #ccw-split .ccw-bar button:hover { opacity: 1; background: rgba(128,128,128,.25); }
 #ccw-split iframe { flex: 1; width: 100%; border: 0; background: transparent; }
 html.ccw-dragging #ccw-split iframe, html.ccw-dragging #root { pointer-events: none; user-select: none; }
-a[href^="/code/session_"] .ccw-open { margin-left: auto; margin-right: calc(var(--df-row-ctl, 24px) + 6px); padding: 0 4px; opacity: 0; font-size: 11px; line-height: 1; border-radius: 3px; }
-a[href^="/code/session_"]:hover .ccw-open { opacity: .6; }
+a[href^="/code/session_"] .ccw-open { margin-left: auto; margin-right: calc(var(--df-row-ctl, 24px) + 6px); padding: 0 4px; opacity: .35; font-size: 11px; line-height: 1; border-radius: 3px; }
+a[href^="/code/session_"]:hover .ccw-open { opacity: .7; }
 a[href^="/code/session_"] .ccw-open:hover { opacity: 1; background: rgba(128,128,128,.3); }
 `;
 
@@ -94,9 +94,13 @@ a[href^="/code/session_"] .ccw-open:hover { opacity: 1; background: rgba(128,128
   const save = () => store.set('split', { panes: state.panes, frac: state.frac });
   const applyWidth = () => { document.documentElement.style.setProperty('--ccw-w', `${Math.round(state.frac * 10000) / 100}vw`); };
 
+  // CSS は最初に入れる (ペインを開くまで入れずにいると ⧉ の位置・濃さのルールが効かない — v0.0.1〜0.0.4 の実害)
+  const ensureStyle = () => { if (!document.getElementById('ccw-style')) { const s = document.createElement('style'); s.id = 'ccw-style'; s.textContent = CSS; document.documentElement.appendChild(s); } };
+  ensureStyle();
+
   function ensureBox() {
     if (box) return box;
-    if (!document.getElementById('ccw-style')) { const s = document.createElement('style'); s.id = 'ccw-style'; s.textContent = CSS; document.documentElement.appendChild(s); }
+    ensureStyle();
     box = document.createElement('div'); box.id = 'ccw-split'; box.hidden = true;
     const handle = document.createElement('div'); handle.className = 'ccw-handle'; handle.title = 'ドラッグで幅を変える';
     panesEl = document.createElement('div'); panesEl.className = 'ccw-panes';
