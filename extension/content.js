@@ -155,7 +155,9 @@
     const enforceHere = () => { const p = sessionPath(location.href); if (p) enforceModel(p, headerTitle(), 'pane'); };
     // 状態 (実行中か / モデル / 判定の段階) を 2 秒ごとに外側のページ (top frame。親セッションのことではない) へ送る → ペインのバーに出る
     const isRunning = () => [...document.querySelectorAll('button[aria-label]')].some((b) => /^(停止|Stop)$/i.test(b.getAttribute('aria-label') || ''));
-    const status = () => { try { window.top.postMessage({ type: 'ccw:status', running: isRunning(), model: currentModel(), enforce: enforceState }, ORIGIN); } catch { } };
+    // アーカイブ済みの画面: 「このセッションはアーカイブされています…」のバナーと「アーカイブ解除」ボタン、composer 無し
+    const isArchived = () => [...document.querySelectorAll('button')].some((b) => /アーカイブ解除|unarchive/i.test((b.textContent || '') + ' ' + (b.getAttribute('aria-label') || '')));
+    const status = () => { try { const archived = isArchived(); if (archived) enforceState = 'archived'; window.top.postMessage({ type: 'ccw:status', running: isRunning(), model: currentModel(), enforce: enforceState, archived }, ORIGIN); } catch { } };
     setInterval(status, 2000);
     // 開いた直後は題 (ヘッダ) も composer もまだ無い → 最初の 30 秒は 1 秒おき、その後は 15 秒おきに見に行く
     // (15 秒おきだけだと、開き直したペインが切り替わるまで 16 秒かかり「切り替わらない」に見えた — 実機ログ 2026-09-10)
@@ -205,12 +207,18 @@ a[href^="/code/session_"] .ccw-open:hover { opacity: 1; background: rgba(128,128
 a[href^="/code/session_"] .ccw-group { padding: 0 4px; opacity: .35; font-size: 11px; line-height: 1; border-radius: 3px; }
 a[href^="/code/session_"]:hover .ccw-group { opacity: .7; }
 a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,128,128,.3); }
+/* アーカイブ済みと分かった行は薄く (サイドバーからしばらく消えないため) */
+.ccw-archived > a { opacity: .4; }
 /* ペインで開いているセッションの行 (= <a> の親の .group) に、claude.ai 自身の選択色を当てる (desktop 版の横並び時と同じ見え方) */
 .ccw-in-pane { background: var(--df-selected, rgba(255,255,255,.15)) !important; }
 .ccw-in-pane .ccw-open { opacity: 1; }
 `;
 
   const state = { panes: [], frac: 0.5, mainCollapsed: false };   // panes: [{ path, title }], frac: ペイン領域の横幅比
+  // アーカイブ済みと分かった path (ペインの中のバナーで検知)。閉じたあとサイドバーに行が残っていても開き直さない。7 日で忘れる
+  const archived = new Map();   // path -> ts
+  const saveArchived = () => store.set('archived', Object.fromEntries(archived));
+  const markArchived = (path) => { if (!path || archived.has(path)) return; archived.set(path, Date.now()); saveArchived(); };
   let box = null, panesEl = null;
 
   const save = () => store.set('split', { panes: state.panes, frac: state.frac, mainCollapsed: state.mainCollapsed });
@@ -349,7 +357,7 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
     const issues = openParentIssues(); if (!issues.size) return;
     for (const x of sessions) {
       if (x.info.role !== 'child' || !issues.has(x.info.issue)) continue;
-      if (x.path === location.pathname || state.panes.some((p) => p.path === x.path) || dismissed.has(x.path)) continue;
+      if (x.path === location.pathname || state.panes.some((p) => p.path === x.path) || dismissed.has(x.path) || archived.has(x.path)) continue;
       log('child:auto-open', { issue: x.info.issue, title: x.title.slice(0, 40) });
       openPane(x.path, x.title);
     }
@@ -366,9 +374,15 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
     if (e.data.type === 'ccw:status') {
       const el = [...panesEl?.children || []].find((x) => x.querySelector('iframe')?.contentWindow === e.source);
       if (!el) return;
+      if (e.data.archived) {
+        const path = el.dataset.path;
+        log('pane:archived-close', { title: (state.panes.find((p) => p.path === path) || {}).title });
+        markArchived(path); closePane(path);
+        return;
+      }
       const run = el.querySelector('.ccw-run'); run.textContent = e.data.running ? '●' : '○'; run.classList.toggle('on', !!e.data.running); run.title = e.data.running ? '実行中' : '待機中';
       el.querySelector('.ccw-model').textContent = e.data.model || '';
-      const ENF = { idle: ['判定前', 'wait'], 'wait-title': ['題待ち', 'wait'], 'wait-composer': ['composer待ち', 'wait'], switching: ['切替中…', 'wait'], ok: ['規約どおり', ''], switched: ['切替済', ''], out: ['規約外', ''], failed: ['切替失敗', 'bad'] };
+      const ENF = { idle: ['判定前', 'wait'], 'wait-title': ['題待ち', 'wait'], 'wait-composer': ['composer待ち', 'wait'], switching: ['切替中…', 'wait'], ok: ['規約どおり', ''], switched: ['切替済', ''], out: ['規約外', ''], failed: ['切替失敗', 'bad'], archived: ['アーカイブ済み', 'bad'] };
       const [label, cls] = ENF[e.data.enforce] || [e.data.enforce, ''];
       const enf = el.querySelector('.ccw-enf'); enf.textContent = label; enf.className = 'ccw-enf ' + cls;
     }
@@ -410,7 +424,7 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
         a.insertBefore(g, a.querySelector('.ccw-open'));
       }
       // 行の色: ペインで開いている行に選択色 (React が再描画しても class は消えるだけなので毎回当て直す)
-      if (a.parentElement) a.parentElement.classList.toggle('ccw-in-pane', open.has(sessionPath(a.href)));
+      if (a.parentElement) { const sp = sessionPath(a.href); a.parentElement.classList.toggle('ccw-in-pane', open.has(sp)); a.parentElement.classList.toggle('ccw-archived', archived.has(sp)); }
     }
     try { autoOpenChildren(sidebarSessions()); } catch (e) { console.warn('[ccw] autoOpenChildren', e); }
   };
@@ -419,14 +433,17 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
 
   // ---- 復元 ----------------------------------------------------------------------
   (async () => {
+    const savedArchived = await store.get('archived', {});
+    const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
+    for (const [k, v] of Object.entries(savedArchived || {})) if (typeof v === 'number' && v > cutoff) archived.set(k, v);
     const saved = await store.get('split', null);
     if (saved && Array.isArray(saved.panes)) {
       state.panes = saved.panes.filter((p) => p && sessionPath(p.path)).map((p) => ({ path: sessionPath(p.path), title: p.title || '' }));
       if (typeof saved.frac === 'number') state.frac = Math.min(0.85, Math.max(0.15, saved.frac));
       state.mainCollapsed = !!saved.mainCollapsed;
     }
-    // メインで開いているセッションと同じペインは要らない
-    state.panes = state.panes.filter((p) => p.path !== location.pathname);
+    // メインで開いているセッションと同じペイン、アーカイブ済みと分かっているペインは要らない
+    state.panes = state.panes.filter((p) => p.path !== location.pathname && !archived.has(p.path));
     decorate();
     if (state.panes.length) render();
     // サイドバーが出そろってから (React の初回描画待ち)
