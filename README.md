@@ -63,8 +63,23 @@ Chrome は Web Store 外の拡張の `update_url` を相手にしないので、
    違えば `chrome.runtime.reload()`
 
 ①の起動は **ツールバーのアイコン** (新版があるとバッジに `UP` が出る。クリックで native host が
-update.ps1 を実行) か、`update.ps1 -Register` でタスク スケジューラ (ログオン時 + 1 時間ごと) に登録。
-新版が無ければアイコンのクリックは claude.ai/code を開く (既に開いていれば前面に出す)。
+update.ps1 を実行。実行中はバッジが `…`) か、`update.ps1 -Register` でタスク スケジューラ
+(ログオン時 + 1 時間ごと) に登録。結果は Windows の通知で出る (更新した / 最新だった / 失敗の理由)。
+更新が無ければアイコンのクリックは claude.ai/code を開く (既に開いていれば前面に出す)。
+連打しても update.ps1 は 1 本しか走らない (拡張側は in-flight guard、ps1 側は named mutex)。
+
+### 診断 (claude.ai のタブから)
+
+拡張は `externally_connectable` で `https://claude.ai/*` からのメッセージを受ける。
+Claude in Chrome の javascript_tool で claude.ai のタブから打てる:
+
+```js
+chrome.runtime.sendMessage('ibdmdncjfdpdmcakmdbdohieahjlkhoa', { command: 'get-version' }, r => console.log(r));
+// running / onDisk / latestVersion / lastUpdateResult (native host の直近の応答) が返る
+// command: check-update / native-ping / update / reload も同じ経路
+```
+
+ログは `%LOCALAPPDATA%\Programs\claude-code-web-split-view\update.log`。
 
 ## リリースサイクル
 
