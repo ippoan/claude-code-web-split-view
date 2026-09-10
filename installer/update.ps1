@@ -37,9 +37,14 @@ function Get-Text($uri, $timeout = 30) {
 
 function Log($msg) {
   $line = "{0:yyyy-MM-dd HH:mm:ss} {1}" -f (Get-Date), $msg
-  Add-Content -Path $LogFile -Value $line -Encoding utf8
+  # 並走した別インスタンスがログを掴んでいても本体の処理を止めない (ロックで例外→catch→Log→また例外、で落ちた実害 2026-09-10)
+  try { Add-Content -Path $LogFile -Value $line -Encoding utf8 } catch { }
   Write-Host $line
 }
+
+# 同時に 2 本走らせない (ボタン連打・タスク スケジューラとの重なり)。後から来た方は何もせず 0 で抜ける
+$script:Mutex = New-Object System.Threading.Mutex($false, 'Local\claude-code-web-split-view-updater')
+if (-not $Mutex.WaitOne(0)) { Log "another updater is running; skip"; exit 0 }
 
 if ($Register) {
   $ps = (Get-Command powershell.exe).Source
