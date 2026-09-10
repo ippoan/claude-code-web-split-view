@@ -267,10 +267,9 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
     for (const c of children) openPane(c.path, c.title);
   }
   // 親 (#p<issue>) を開いている間に、その子がサイドバーに現れたら自動で右に開く。
-  // 「親を開いたら子を全部開く」ではない (ユーザー指示 2026-09-10)。起動時点で既にある子は開かず、
-  // 新しく現れた (または題が付いて規約に合うようになった) 子だけを、1 つにつき 1 回だけ開く。
+  // 「親を開いたら子を全部開く」ではない (ユーザー指示 2026-09-10)。起動時点で既にある子は対象外で、
+  // 新しく現れた (または題が変わった) 子を、そのペインが閉じていれば開く。
   const seenTitles = new Map();      // path -> 最後に見た題
-  const autoOpened = new Set();      // このページで自動で開いた path (閉じたのを開き直さない)
   let seenInitialized = false;
   const openParentIssues = () => {
     const issues = new Set();
@@ -292,8 +291,7 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
     const issues = openParentIssues(); if (!issues.size) return;
     for (const x of changed) {
       if (x.info.role !== 'child' || !issues.has(x.info.issue)) continue;
-      if (autoOpened.has(x.path) || x.path === location.pathname) continue;
-      autoOpened.add(x.path);
+      if (x.path === location.pathname || state.panes.some((p) => p.path === x.path)) continue;   // 既に出ている
       console.log('[ccw] child appeared ->', x.title);
       openPane(x.path, x.title);
     }
