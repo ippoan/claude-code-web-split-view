@@ -98,8 +98,13 @@ Claude in Chrome の javascript_tool で claude.ai のタブから打てる:
 ```js
 chrome.runtime.sendMessage('ibdmdncjfdpdmcakmdbdohieahjlkhoa', { command: 'get-version' }, r => console.log(r));
 // running / onDisk / latestVersion / lastUpdateResult (native host の直近の応答) が返る
-// command: check-update / native-ping / update / reload も同じ経路
+// command: check-update / native-ping / update / reload / get-log / clear-log も同じ経路
 ```
+
+`get-log` は content script の判定ログ (直近 300 件、`chrome.storage.local` の `ccw:log`)。
+モデル強制の各分岐 (`enforce:no-title` / `no-composer` / `out-of-convention` / `ok` / `switched` /
+`switch-failed` / `menu-item-missing`)、ペインの起動 (`pane:init`)、子の自動展開 (`child:auto-open`) が
+frame (top / pane)・path・題つきで残る。「切り替わらない」ときはまずこれを読む。
 
 ログは `%LOCALAPPDATA%\Programs\claude-code-web-split-view\update.log`。
 
