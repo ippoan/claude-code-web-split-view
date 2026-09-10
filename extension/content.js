@@ -135,8 +135,16 @@ html.ccw-active #root { width: calc(100% - var(--ccw-w, 50vw)) !important; }
   display: flex; background: var(--cds-surface-1, #1f1e1b); color: var(--cds-text-primary, #eee);
   font: 12px/1.4 system-ui, sans-serif; box-shadow: -1px 0 0 rgba(128,128,128,.35); }
 #ccw-split[hidden] { display: none; }
-#ccw-split .ccw-handle { flex: 0 0 6px; cursor: col-resize; background: transparent; }
-#ccw-split .ccw-handle:hover, html.ccw-dragging #ccw-split .ccw-handle { background: rgba(128,128,128,.35); }
+#ccw-split .ccw-handle { flex: 0 0 16px; cursor: col-resize; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 4px; box-sizing: border-box; }
+#ccw-split .ccw-handle:hover, html.ccw-dragging #ccw-split .ccw-handle { background: rgba(128,128,128,.2); }
+#ccw-split .ccw-handle button { all: unset; cursor: pointer; font-size: 12px; line-height: 1; padding: 4px 2px; opacity: .6; border-radius: 3px; }
+#ccw-split .ccw-handle button:hover { opacity: 1; background: rgba(128,128,128,.35); }
+/* 親 (メイン) を畳む: #root を 0 幅にしてペインに全部渡す。戻すのは縦バーの ⇥ */
+html.ccw-main-collapsed #root { width: 0 !important; overflow: hidden !important; }
+html.ccw-main-collapsed #ccw-split { width: 100vw; }
+/* サイドバー上部 (desktop と同じ位置) の畳むボタン。claude.ai 自身の「サイドバーを非表示」を押すだけ */
+.ccw-sb-toggle { all: unset; cursor: pointer; margin-right: 8px; padding: 3px 6px; border-radius: 6px; opacity: .7; font-size: 13px; line-height: 1; }
+.ccw-sb-toggle:hover { opacity: 1; background: rgba(128,128,128,.25); }
 #ccw-split .ccw-panes { flex: 1; display: flex; min-width: 0; overflow-x: auto; }
 #ccw-split .ccw-pane { flex: 1 1 0; min-width: 360px; display: flex; flex-direction: column; border-left: 1px solid rgba(128,128,128,.25); }
 #ccw-split .ccw-pane:first-child { border-left: 0; }
@@ -157,11 +165,19 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
 .ccw-in-pane .ccw-open { opacity: 1; }
 `;
 
-  const state = { panes: [], frac: 0.5 };   // panes: [{ path, title }], frac: ペイン領域の横幅比
+  const state = { panes: [], frac: 0.5, mainCollapsed: false };   // panes: [{ path, title }], frac: ペイン領域の横幅比
   let box = null, panesEl = null;
 
-  const save = () => store.set('split', { panes: state.panes, frac: state.frac });
-  const applyWidth = () => { document.documentElement.style.setProperty('--ccw-w', `${Math.round(state.frac * 10000) / 100}vw`); };
+  const save = () => store.set('split', { panes: state.panes, frac: state.frac, mainCollapsed: state.mainCollapsed });
+  const applyWidth = () => {
+    document.documentElement.classList.toggle('ccw-main-collapsed', state.mainCollapsed && state.panes.length > 0);
+    document.documentElement.style.setProperty('--ccw-w', state.mainCollapsed ? '100vw' : `${Math.round(state.frac * 10000) / 100}vw`);
+    if (mainBtn) { mainBtn.textContent = state.mainCollapsed ? '⇥' : '⇤'; mainBtn.title = state.mainCollapsed ? '親 (メイン) を戻す' : '親 (メイン) を畳んでペインに幅を渡す'; }
+  };
+  // claude.ai 自身のサイドバー開閉ボタン (隠すと左上に「サイドバーを表示」が出る)
+  const nativeSidebarBtn = (which) => [...document.querySelectorAll('button[aria-label]')].find((b) => (which === 'hide' ? /サイドバーを非表示|hide sidebar/i : /サイドバーを表示|show sidebar/i).test(b.getAttribute('aria-label') || ''));
+  const toggleSidebar = () => { const b = nativeSidebarBtn('hide') || nativeSidebarBtn('show'); if (b) b.click(); };
+  let mainBtn = null;
 
   // CSS は最初に入れる (ペインを開くまで入れずにいると ⧉ の位置・濃さのルールが効かない — v0.0.1〜0.0.4 の実害)
   const ensureStyle = () => { if (!document.getElementById('ccw-style')) { const s = document.createElement('style'); s.id = 'ccw-style'; s.textContent = CSS; document.documentElement.appendChild(s); } };
@@ -172,10 +188,14 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
     ensureStyle();
     box = document.createElement('div'); box.id = 'ccw-split'; box.hidden = true;
     const handle = document.createElement('div'); handle.className = 'ccw-handle'; handle.title = 'ドラッグで幅を変える';
+    mainBtn = document.createElement('button'); mainBtn.addEventListener('click', (e) => { e.stopPropagation(); state.mainCollapsed = !state.mainCollapsed; applyWidth(); save(); });
+    const sbBtn = document.createElement('button'); sbBtn.textContent = '▤'; sbBtn.title = 'サイドバーを畳む / 戻す'; sbBtn.addEventListener('click', (e) => { e.stopPropagation(); if (state.mainCollapsed) { state.mainCollapsed = false; applyWidth(); save(); } toggleSidebar(); });
+    handle.append(mainBtn, sbBtn);
     panesEl = document.createElement('div'); panesEl.className = 'ccw-panes';
     box.append(handle, panesEl);
     document.body.appendChild(box);
     handle.addEventListener('mousedown', (e) => {
+      if (e.target.closest('button') || state.mainCollapsed) return;
       e.preventDefault();
       document.documentElement.classList.add('ccw-dragging');
       const move = (ev) => { state.frac = Math.min(0.85, Math.max(0.15, (window.innerWidth - ev.clientX) / window.innerWidth)); applyWidth(); };
@@ -310,7 +330,19 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
   // サイドバーのセッション行に ⧉ を足す (React の再描画で消えたら足し直す)。
   // 行の右端には claude.ai 自身のホバー操作ボタン (<a> の兄弟、absolute、幅 --df-row-ctl) が乗るので、
   // ⧉ はその左に margin-right で逃がす (重なると押し分けられない — 2026-09-10 実機で指摘)
+  // サイドバー上部の「チャット / Code」切替の左に、畳むボタンを差し込む (desktop の位置に合わせる)
+  const ensureSidebarToggle = () => {
+    if (document.querySelector('.ccw-sb-toggle')) return;
+    const radios = [...document.querySelectorAll('[role="radiogroup"]')];
+    const mode = radios.find((g) => [...g.querySelectorAll('[role="radio"]')].some((r) => /^Code$/i.test(r.getAttribute('aria-label') || r.textContent || '')));
+    if (!mode || !mode.parentElement) return;
+    const b = document.createElement('button'); b.className = 'ccw-sb-toggle'; b.textContent = '▤'; b.title = 'サイドバーを畳む (戻すのは左上の「サイドバーを表示」)';
+    b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); toggleSidebar(); });
+    mode.parentElement.insertBefore(b, mode);
+  };
+
   const decorate = () => {
+    try { ensureSidebarToggle(); } catch (e) { console.warn('[ccw] sidebar toggle', e); }
     const open = new Set(state.panes.map((p) => p.path));
     for (const a of document.querySelectorAll('a[href^="/code/session_"]')) {
       if (a.closest('#ccw-split')) continue;
@@ -337,6 +369,7 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
     if (saved && Array.isArray(saved.panes)) {
       state.panes = saved.panes.filter((p) => p && sessionPath(p.path)).map((p) => ({ path: sessionPath(p.path), title: p.title || '' }));
       if (typeof saved.frac === 'number') state.frac = Math.min(0.85, Math.max(0.15, saved.frac));
+      state.mainCollapsed = !!saved.mainCollapsed;
     }
     // メインで開いているセッションと同じペインは要らない
     state.panes = state.panes.filter((p) => p.path !== location.pathname);
