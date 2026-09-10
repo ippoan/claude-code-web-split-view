@@ -69,32 +69,34 @@
   // 決着がつくまで呼び直される前提 (15 秒おきの ticker + 遷移時)。題や composer がまだ無い回は何も決めない
   // (v0.0.8〜0.0.10 は 1 回きりで、描画前に「規約外」と決めて二度と見なかった → 切り替わらないペインが出た)
   const attempts = new Map();   // path -> 判定を呼ばれた回数 (ログ用)
+  let enforceState = 'idle';    // ペインのバーに出す判定の段階 (top へ status で送る)
   async function enforceModel(path, title, why) {
     if (!path || enforced.has(path) || enforcing) return null;
     const n = (attempts.get(path) || 0) + 1; attempts.set(path, n);
     const t = cleanTitle(title);
-    if (!t) { if (n === 1 || n % 4 === 0) log('enforce:no-title', { why, n }); return null; }   // 題がまだ取れていない → 次回
+    if (!t) { enforceState = 'wait-title'; if (n === 1 || n % 4 === 0) log('enforce:no-title', { why, n }); return null; }   // 題がまだ取れていない → 次回
     const want = parseTitle(t).model;
-    if (!want) { enforced.add(path); log('enforce:out-of-convention', { why, title: t.slice(0, 60) }); return null; }   // 規約外 → 触らない (決着)
+    if (!want) { enforced.add(path); enforceState = 'out'; log('enforce:out-of-convention', { why, title: t.slice(0, 60) }); return null; }   // 規約外 → 触らない (決着)
     const cur = currentModel();
-    if (!cur) { if (n === 1 || n % 4 === 0) log('enforce:no-composer', { why, n, title: t.slice(0, 40) }); return null; }   // composer がまだ無い → 次回
+    if (!cur) { enforceState = 'wait-composer'; if (n === 1 || n % 4 === 0) log('enforce:no-composer', { why, n, title: t.slice(0, 40) }); return null; }   // composer がまだ無い → 次回
     const rule = MODEL_RULES[want];
-    if (rule.ok.test(cur)) { enforced.add(path); log('enforce:ok', { why, title: t.slice(0, 40), want, cur }); return null; }   // 期待どおり (決着)
-    enforcing = true;
+    if (rule.ok.test(cur)) { enforced.add(path); enforceState = 'ok'; log('enforce:ok', { why, title: t.slice(0, 40), want, cur }); return null; }   // 期待どおり (決着)
+    enforcing = true; enforceState = 'switching';
     try {
       const btn = modelButton(); btn.click();
       await sleep(600);
       const items = [...document.querySelectorAll('[role="menuitemradio"]')].map((e) => (e.innerText || '').split('\n')[0].trim());
       const item = [...document.querySelectorAll('[role="menuitemradio"]')].find((e) => rule.pick.test((e.innerText || '').trim()));
-      if (!item) { btn.click(); log('enforce:menu-item-missing', { why, want, cur, items }); return null; }
+      if (!item) { btn.click(); enforceState = 'failed'; log('enforce:menu-item-missing', { why, want, cur, items }); return null; }
       item.click();
       await sleep(600);
       const after = currentModel();
       const done = !!after && rule.ok.test(after);
       if (done) enforced.add(path);   // 切り替わった (決着)。失敗なら次回
+      enforceState = done ? 'switched' : 'failed';
       log(done ? 'enforce:switched' : 'enforce:switch-failed', { why, title: t.slice(0, 40), want, cur, after, items });
       return after;
-    } catch (e) { log('enforce:error', { why, error: String(e && e.message || e) }); return null; }
+    } catch (e) { enforceState = 'failed'; log('enforce:error', { why, error: String(e && e.message || e) }); return null; }
     finally { enforcing = false; }
   }
 
@@ -151,6 +153,10 @@
     let last = location.pathname;
     const report = () => { window.top.postMessage({ type: 'ccw:nav', path: location.pathname, title: document.title }, ORIGIN); };
     const enforceHere = () => { const p = sessionPath(location.href); if (p) enforceModel(p, headerTitle(), 'pane'); };
+    // 状態 (実行中か / モデル / 判定の段階) を 2 秒ごとに top へ送る → ペインのバーに出る
+    const isRunning = () => [...document.querySelectorAll('button[aria-label]')].some((b) => /^(停止|Stop)$/i.test(b.getAttribute('aria-label') || ''));
+    const status = () => { try { window.top.postMessage({ type: 'ccw:status', running: isRunning(), model: currentModel(), enforce: enforceState }, ORIGIN); } catch { } };
+    setInterval(status, 2000);
     report(); sleep(2000).then(enforceHere);
     setInterval(() => { if (location.pathname !== last) { last = location.pathname; report(); enforceHere(); } }, 1000);
     setInterval(enforceHere, 15000);   // 決着がつくまで呼び直す (決着後は即 return)
@@ -179,6 +185,11 @@ html.ccw-main-collapsed #ccw-split { width: 100vw; }
 #ccw-split .ccw-pane:first-child { border-left: 0; }
 #ccw-split .ccw-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgba(128,128,128,.12); }
 #ccw-split .ccw-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .85; }
+#ccw-split .ccw-status { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; font-size: 11px; opacity: .8; white-space: nowrap; }
+#ccw-split .ccw-status .ccw-run { color: #999; }
+#ccw-split .ccw-status .ccw-run.on { color: #4ade80; }
+#ccw-split .ccw-status .ccw-enf.bad { color: #f87171; }
+#ccw-split .ccw-status .ccw-enf.wait { color: #fbbf24; }
 #ccw-split .ccw-bar button { all: unset; cursor: pointer; padding: 0 5px; border-radius: 4px; opacity: .7; }
 #ccw-split .ccw-bar button:hover { opacity: 1; background: rgba(128,128,128,.25); }
 #ccw-split iframe { flex: 1; width: 100%; border: 0; background: transparent; }
@@ -255,8 +266,9 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
     const el = document.createElement('div'); el.className = 'ccw-pane'; el.dataset.path = p.path;
     const bar = document.createElement('div'); bar.className = 'ccw-bar';
     const title = document.createElement('span'); title.className = 'ccw-title'; title.textContent = p.title || p.path;
+    const status = document.createElement('span'); status.className = 'ccw-status'; status.innerHTML = '<span class="ccw-run" title="実行中か">○</span><span class="ccw-model"></span><span class="ccw-enf" title="モデル判定の段階">…</span>';
     const btn = (label, tip, fn) => { const b = document.createElement('button'); b.textContent = label; b.title = tip; b.addEventListener('click', fn); return b; };
-    bar.append(title,
+    bar.append(title, status,
       btn('⇄', 'メインと入れ替える', () => swapWithMain(el.dataset.path)),
       btn('↗', 'メインで開く (ペインは閉じる)', () => { const path = el.dataset.path; closePane(path); location.assign(path); }),
       btn('×', '閉じる', () => { dismiss(el.dataset.path); closePane(el.dataset.path); }));
@@ -346,6 +358,15 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
   window.addEventListener('message', (e) => {
     if (e.origin !== ORIGIN || !e.data || typeof e.data.type !== 'string') return;
     if (e.data.type === 'ccw:open') openPane(sessionPath(e.data.path), e.data.title);
+    if (e.data.type === 'ccw:status') {
+      const el = [...panesEl?.children || []].find((x) => x.querySelector('iframe')?.contentWindow === e.source);
+      if (!el) return;
+      const run = el.querySelector('.ccw-run'); run.textContent = e.data.running ? '●' : '○'; run.classList.toggle('on', !!e.data.running); run.title = e.data.running ? '実行中' : '待機中';
+      el.querySelector('.ccw-model').textContent = e.data.model || '';
+      const ENF = { idle: ['判定前', 'wait'], 'wait-title': ['題待ち', 'wait'], 'wait-composer': ['composer待ち', 'wait'], switching: ['切替中…', 'wait'], ok: ['規約どおり', ''], switched: ['切替済', ''], out: ['規約外', ''], failed: ['切替失敗', 'bad'] };
+      const [label, cls] = ENF[e.data.enforce] || [e.data.enforce, ''];
+      const enf = el.querySelector('.ccw-enf'); enf.textContent = label; enf.className = 'ccw-enf ' + cls;
+    }
     if (e.data.type === 'ccw:nav') {
       // どのペインからか = source window で引く
       const el = [...panesEl?.children || []].find((x) => x.querySelector('iframe')?.contentWindow === e.source);
