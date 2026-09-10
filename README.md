@@ -89,5 +89,17 @@ installer/host.ps1    native messaging host (アイコンクリック更新の�
   サイドバーから引き直す (見つからなければパス表示)
 - iframe 内にサイドバーが出ない挙動は claude.ai 側のもので、変わったら CSS で隠す必要がある
 - desktop 版の「ドラッグで横並び」ジェスチャは未実装 (Ctrl/⌘+クリックと ⧉ のみ)
-- 拡張として読み込んだ状態での動作確認は未 (content.js を claude.ai/code のタブに直接流し込んで確認済み。
-  chrome.storage が無い環境では localStorage に落ちるので同じコードが動く)
+- native host 経由のボタン更新 (ツールバーのアイコン → update.ps1) は Windows 実機で未確認
+  (MSI の配置と拡張の読み込み・分割画面そのものは v0.0.1 で確認済み。下記)
+
+## 実機確認 (v0.0.1、Windows 11 + Chrome、2026-09-10)
+
+- MSI (perUser) を実行 → `%LOCALAPPDATA%\Programs\claude-code-web-split-view\extension` を
+  「パッケージ化されていない拡張機能を読み込む」で読み込み、ID が `ibdmdncjfdpdmcakmdbdohieahjlkhoa` で一致
+- claude.ai/code を開くとサイドバーの全セッション行に ⧉ が付く
+- セッション行を Ctrl+クリック → 右にペインが開き、`#root` が 1920px → 960px に縮む。
+  iframe 内は content script が入り (`html[data-ccw-pane]`)、composer 付きでサイドバー無し
+- ⧉ で 2 枚目 → 2 ペインが等幅で並ぶ (各 477px)。ストリーミング中のセッションもそのまま流れる
+- リロード → 2 ペインとも復元。× で閉じると `#root` が 1920px に戻る
+- 未署名 MSI なので初回実行時に SmartScreen (「Windows によって PC が保護されました」) が出る。
+  「詳細情報」→「実行」で通る (gh-actions-live の MSI と同じ)
