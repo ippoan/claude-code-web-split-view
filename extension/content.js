@@ -210,7 +210,7 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
     bar.append(title,
       btn('⇄', 'メインと入れ替える', () => swapWithMain(el.dataset.path)),
       btn('↗', 'メインで開く (ペインは閉じる)', () => { const path = el.dataset.path; closePane(path); location.assign(path); }),
-      btn('×', '閉じる', () => closePane(el.dataset.path)));
+      btn('×', '閉じる', () => { dismiss(el.dataset.path); closePane(el.dataset.path); }));
     const f = document.createElement('iframe'); f.src = p.path; f.setAttribute('allow', 'clipboard-read; clipboard-write; microphone');
     el.append(bar, f);
     return el;
@@ -266,11 +266,12 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
     if (includeParent && parent) openPane(parent.path, parent.title);
     for (const c of children) openPane(c.path, c.title);
   }
-  // 親 (#p<issue>) を開いている間に、その子がサイドバーに現れたら自動で右に開く。
-  // 「親を開いたら子を全部開く」ではない (ユーザー指示 2026-09-10)。起動時点で既にある子は対象外で、
-  // 新しく現れた (または題が変わった) 子を、そのペインが閉じていれば開く。
-  const seenTitles = new Map();      // path -> 最後に見た題
-  let seenInitialized = false;
+  // 親 (#p<issue>) をメインかペインで開いている間、サイドバーにあるその子のうちペインに出ていないものを開く
+  // (起動時点で既にある子も対象 — ユーザー指示 2026-09-10)。× で閉じた子だけは、このタブを開いている間は
+  // 開き直さない (閉じた瞬間に開き直すと閉じられなくなる)。リロードや新しいタブでは再び開く。
+  const DISMISSED_KEY = 'ccw:dismissed';
+  const dismissed = new Set((() => { try { return JSON.parse(sessionStorage.getItem(DISMISSED_KEY) || '[]'); } catch { return []; } })());
+  const dismiss = (path) => { dismissed.add(path); try { sessionStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissed])); } catch { } };
   const openParentIssues = () => {
     const issues = new Set();
     const main = sessionPath(location.href);
@@ -278,21 +279,12 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
     for (const p of state.panes) { const i = parseTitle(p.title); if (i.role === 'parent') issues.add(i.issue); }
     return issues;
   };
-  function autoOpenNewChildren(sessions) {
-    const changed = [];
-    for (const x of sessions) {
-      const prev = seenTitles.get(x.path);
-      if (prev === x.title) continue;
-      seenTitles.set(x.path, x.title);
-      if (seenInitialized) changed.push(x);
-    }
-    if (!seenInitialized) { seenInitialized = true; return; }   // 初回はいまある一覧を覚えるだけ
-    if (!changed.length) return;
+  function autoOpenChildren(sessions) {
     const issues = openParentIssues(); if (!issues.size) return;
-    for (const x of changed) {
+    for (const x of sessions) {
       if (x.info.role !== 'child' || !issues.has(x.info.issue)) continue;
-      if (x.path === location.pathname || state.panes.some((p) => p.path === x.path)) continue;   // 既に出ている
-      console.log('[ccw] child appeared ->', x.title);
+      if (x.path === location.pathname || state.panes.some((p) => p.path === x.path) || dismissed.has(x.path)) continue;
+      console.log('[ccw] open child of #p' + x.info.issue, '->', x.title);
       openPane(x.path, x.title);
     }
   }
@@ -334,7 +326,7 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
       // 行の色: ペインで開いている行に選択色 (React が再描画しても class は消えるだけなので毎回当て直す)
       if (a.parentElement) a.parentElement.classList.toggle('ccw-in-pane', open.has(sessionPath(a.href)));
     }
-    try { autoOpenNewChildren(sidebarSessions()); } catch (e) { console.warn('[ccw] autoOpenNewChildren', e); }
+    try { autoOpenChildren(sidebarSessions()); } catch (e) { console.warn('[ccw] autoOpenChildren', e); }
   };
   let pending = false;
   new MutationObserver(() => { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; decorate(); }); }).observe(document.documentElement, { childList: true, subtree: true });
