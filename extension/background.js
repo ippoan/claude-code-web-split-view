@@ -37,7 +37,8 @@ async function checkLatest() {
   try {
     const r = await fetch(UPDATE_XML, { cache: 'no-store' });
     if (!r.ok) return null;
-    const m = (await r.text()).match(/version=['"]([0-9.]+)['"]/);
+    // <?xml version='1.0'?> を拾わないよう updatecheck 要素の version だけを見る (v0.0.4 で 1.0 と誤認してバッジが消えなかった)
+    const m = (await r.text()).match(/<updatecheck\b[^>]*\sversion=['"]([0-9.]+)['"]/);
     const latest = m && m[1];
     const newer = !!latest && cmpVer(latest, running()) > 0;
     await chrome.action.setBadgeText({ text: newer ? 'UP' : '' });
