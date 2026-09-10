@@ -68,28 +68,34 @@
   const enforced = new Set();   // 決着がついた (期待どおりだった / 切り替えた / 規約外だった) セッション path
   // 決着がつくまで呼び直される前提 (15 秒おきの ticker + 遷移時)。題や composer がまだ無い回は何も決めない
   // (v0.0.8〜0.0.10 は 1 回きりで、描画前に「規約外」と決めて二度と見なかった → 切り替わらないペインが出た)
+  const attempts = new Map();   // path -> 判定を呼ばれた回数 (ログ用)
   async function enforceModel(path, title, why) {
     if (!path || enforced.has(path) || enforcing) return null;
-    if (!title) return null;                                   // 題がまだ取れていない → 次回
-    const want = parseTitle(title).model;
-    if (!want) { enforced.add(path); return null; }            // 規約外 → 触らない (決着)
+    const n = (attempts.get(path) || 0) + 1; attempts.set(path, n);
+    const t = cleanTitle(title);
+    if (!t) { if (n === 1 || n % 4 === 0) log('enforce:no-title', { why, n }); return null; }   // 題がまだ取れていない → 次回
+    const want = parseTitle(t).model;
+    if (!want) { enforced.add(path); log('enforce:out-of-convention', { why, title: t.slice(0, 60) }); return null; }   // 規約外 → 触らない (決着)
     const cur = currentModel();
-    if (!cur) return null;                                     // composer がまだ無い → 次回
+    if (!cur) { if (n === 1 || n % 4 === 0) log('enforce:no-composer', { why, n, title: t.slice(0, 40) }); return null; }   // composer がまだ無い → 次回
     const rule = MODEL_RULES[want];
-    if (rule.ok.test(cur)) { enforced.add(path); return null; } // 期待どおり (決着)
+    if (rule.ok.test(cur)) { enforced.add(path); log('enforce:ok', { why, title: t.slice(0, 40), want, cur }); return null; }   // 期待どおり (決着)
     enforcing = true;
     try {
       const btn = modelButton(); btn.click();
       await sleep(600);
+      const items = [...document.querySelectorAll('[role="menuitemradio"]')].map((e) => (e.innerText || '').split('\n')[0].trim());
       const item = [...document.querySelectorAll('[role="menuitemradio"]')].find((e) => rule.pick.test((e.innerText || '').trim()));
-      if (!item) { btn.click(); console.warn('[ccw] model menu item not found for', want, '(retry later)'); return null; }
+      if (!item) { btn.click(); log('enforce:menu-item-missing', { why, want, cur, items }); return null; }
       item.click();
       await sleep(600);
       const after = currentModel();
-      console.log('[ccw] model', cur, '->', after, 'by title', JSON.stringify(title), why);
-      if (after && rule.ok.test(after)) enforced.add(path);   // 切り替わった (決着)。失敗なら次回
+      const done = !!after && rule.ok.test(after);
+      if (done) enforced.add(path);   // 切り替わった (決着)。失敗なら次回
+      log(done ? 'enforce:switched' : 'enforce:switch-failed', { why, title: t.slice(0, 40), want, cur, after, items });
       return after;
-    } finally { enforcing = false; }
+    } catch (e) { log('enforce:error', { why, error: String(e && e.message || e) }); return null; }
+    finally { enforcing = false; }
   }
 
   const linkTitle = (a) => {
@@ -111,9 +117,27 @@
     },
   };
 
+  // ---- 診断ログ (chrome.storage.local の ccw:log に直近 300 件。background の get-log で読める) ----
+  const LOG_KEY = 'ccw:log';
+  let logChain = Promise.resolve();
+  function log(step, data) {
+    const entry = { t: new Date().toISOString(), frame: isTop ? 'top' : 'pane', path: location.pathname, step, ...(data || {}) };
+    console.log('[ccw]', step, data || '');
+    if (!hasChromeStorage) return;
+    logChain = logChain.then(async () => {
+      try {
+        const o = await chrome.storage.local.get(LOG_KEY);
+        const arr = Array.isArray(o[LOG_KEY]) ? o[LOG_KEY] : [];
+        arr.push(entry); while (arr.length > 300) arr.shift();
+        await chrome.storage.local.set({ [LOG_KEY]: arr });
+      } catch { }
+    });
+  }
+
   // ---- iframe 側 (ペインの中) ------------------------------------------------
   if (!isTop) {
     document.documentElement.dataset.ccwPane = '1';
+    log('pane:init', { href: location.pathname });
     // Ctrl/⌘+クリックは親に上げて新しいペインにする (iframe の中に iframe を作らない)
     document.addEventListener('click', (e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
@@ -309,7 +333,7 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
     for (const x of sessions) {
       if (x.info.role !== 'child' || !issues.has(x.info.issue)) continue;
       if (x.path === location.pathname || state.panes.some((p) => p.path === x.path) || dismissed.has(x.path)) continue;
-      console.log('[ccw] open child of #p' + x.info.issue, '->', x.title);
+      log('child:auto-open', { issue: x.info.issue, title: x.title.slice(0, 40) });
       openPane(x.path, x.title);
     }
   }

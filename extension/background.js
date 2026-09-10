@@ -104,6 +104,8 @@ chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
       case 'native-ping':   return await nativeCall('ping');
       case 'update':        return await runUpdate();
       case 'reload':        setTimeout(() => chrome.runtime.reload(), 300); return { ok: true };
+      case 'get-log':       { const { 'ccw:log': log } = await chrome.storage.local.get('ccw:log'); return { ok: true, running: running(), log: log || [] }; }
+      case 'clear-log':     await chrome.storage.local.remove('ccw:log'); return { ok: true };
       default:              return { ok: false, error: `unknown command: ${command}` };
     }
   })().then(sendResponse, (e) => sendResponse({ ok: false, error: (e && e.message) || String(e) }));
