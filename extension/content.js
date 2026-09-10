@@ -83,7 +83,7 @@ html.ccw-active #root { width: calc(100% - var(--ccw-w, 50vw)) !important; }
 #ccw-split .ccw-bar button:hover { opacity: 1; background: rgba(128,128,128,.25); }
 #ccw-split iframe { flex: 1; width: 100%; border: 0; background: transparent; }
 html.ccw-dragging #ccw-split iframe, html.ccw-dragging #root { pointer-events: none; user-select: none; }
-a[href^="/code/session_"] .ccw-open { margin-left: auto; padding: 0 4px; opacity: 0; font-size: 11px; line-height: 1; border-radius: 3px; }
+a[href^="/code/session_"] .ccw-open { margin-left: auto; margin-right: calc(var(--df-row-ctl, 24px) + 6px); padding: 0 4px; opacity: 0; font-size: 11px; line-height: 1; border-radius: 3px; }
 a[href^="/code/session_"]:hover .ccw-open { opacity: .6; }
 a[href^="/code/session_"] .ccw-open:hover { opacity: 1; background: rgba(128,128,128,.3); }
 `;
@@ -186,7 +186,9 @@ a[href^="/code/session_"] .ccw-open:hover { opacity: 1; background: rgba(128,128
     }
   });
 
-  // サイドバーのセッション行に ⧉ を足す (React の再描画で消えたら足し直す)
+  // サイドバーのセッション行に ⧉ を足す (React の再描画で消えたら足し直す)。
+  // 行の右端には claude.ai 自身のホバー操作ボタン (<a> の兄弟、absolute、幅 --df-row-ctl) が乗るので、
+  // ⧉ はその左に margin-right で逃がす (重なると押し分けられない — 2026-09-10 実機で指摘)
   const decorate = () => {
     for (const a of document.querySelectorAll('a[href^="/code/session_"]')) {
       if (a.querySelector('.ccw-open') || a.closest('#ccw-split')) continue;
