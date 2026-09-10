@@ -267,11 +267,11 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
     for (const c of children) openPane(c.path, c.title);
   }
   // 親 (#p<issue>) をメインかペインで開いている間、サイドバーにあるその子のうちペインに出ていないものを開く
-  // (起動時点で既にある子も対象 — ユーザー指示 2026-09-10)。× で閉じた子だけは、このタブを開いている間は
-  // 開き直さない (閉じた瞬間に開き直すと閉じられなくなる)。リロードや新しいタブでは再び開く。
-  const DISMISSED_KEY = 'ccw:dismissed';
-  const dismissed = new Set((() => { try { return JSON.parse(sessionStorage.getItem(DISMISSED_KEY) || '[]'); } catch { return []; } })());
-  const dismiss = (path) => { dismissed.add(path); try { sessionStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissed])); } catch { } };
+  // (起動時点で既にある子も対象 — ユーザー指示 2026-09-10)。× で閉じた子だけは、このページを開いている間は
+  // 開き直さない (閉じた瞬間に開き直すと閉じられなくなる)。リロードすれば再び開く。
+  // メモリ上だけに持つ (sessionStorage はリロードでも残るので、README の「リロードで再び開く」に合わせる)
+  const dismissed = new Set();
+  const dismiss = (path) => dismissed.add(path);
   const openParentIssues = () => {
     const issues = new Set();
     const main = sessionPath(location.href);
