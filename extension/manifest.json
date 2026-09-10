@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Claude Code Web Split View",
+  "version": "0.0.1",
+  "description": "claude.ai/code に Claude Code desktop 風の分割画面を足す。サイドバーのセッションを Ctrl/⌘+クリックで右のペインに開く",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmpd3jjcnArD8BqJR3bO8judzmgcCRTBbvYSxBIKTqsBSgTWU432jCLAg+qquKPjBflh/lsLYfhKjtAlynsqC8MDHRKkPoJeFu0SI/oy8/xJW2bZNdpbxKMhjKXra7Y76cS2+t6mZS4y2l9GmJl5NjAw6kmixp1CR6+FoTe6MCHK61r5fNWUd7UpsZcJtUdxRmQ0zDUMYNc2V6AN3noOcoH6AKIS/3NJfvrJZ1W6DqhTR2pKGrkoaIMuZZOu3Ek4tVVrqZGtvQFIQ49k1+xmtKcIHRAs/h8V1/e8NnQvlAQBXQ41t0n1SIQ+mM5Rg7RegnOShfOlQT5IP5Sdc5Y/wUwIDAQAB",
+  "permissions": [
+    "alarms",
+    "nativeMessaging",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://github.com/ippoan/claude-code-web-split-view/*",
+    "https://objects.githubusercontent.com/*",
+    "https://release-assets.githubusercontent.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Claude Code Web Split View — クリックで claude.ai/code を開く (新版があれば更新)",
+    "default_icon": "icon128.png"
+  },
+  "icons": {
+    "128": "icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://claude.ai/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}

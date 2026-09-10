@@ -1,0 +1,6 @@
+*.pem
+*.crx
+*.zip
+*.msi
+dist/
+update.log

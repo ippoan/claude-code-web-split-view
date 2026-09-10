@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ippoan/gh-actions-live の installer/main.wxs の移植。1 パッケージで perUser / perMachine の両対応。
+
+    既定 (admin 不要):  msiexec /i claude-code-web-split-view-x.y.z-x64.msi
+      - 拡張一式を %LOCALAPPDATA%\Programs\claude-code-web-split-view\extension に置く
+      - native messaging host (host.bat → host.ps1 → update.ps1) を HKCU に登録。
+        ツールバーのボタンがこれを呼び、extension\ を差し替えて拡張が自分でリロードする
+      - Chrome への初回読み込みだけ手動: chrome://extensions → デベロッパーモード →
+        「パッケージ化されていない拡張機能を読み込む」→ 上のフォルダ
+        (非管理 Windows では Chrome が Web Store 外の force_installed を捨てるため。gh-actions-live#9)
+
+    管理端末向け (UAC 昇格):  msiexec /i claude-code-web-split-view-x.y.z-x64.msi ALLUSERS=1
+      - C:\Program Files\claude-code-web-split-view に置き、HKLM に ExtensionSettings (force_installed) を書く
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="Claude Code Web Split View"
+      Manufacturer="ippoan"
+      Version="$(var.Version)"
+      UpgradeCode="22C743FE-0EBA-4A78-80B5-AF46146EFF4C"
+      Scope="perUserOrMachine"
+      Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="より新しいバージョンが既にインストールされています。" />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="claude-code-web-split-view">
+        <Directory Id="EXTFOLDER" Name="extension" />
+      </Directory>
+    </StandardDirectory>
+
+    <ComponentGroup Id="ExtensionFiles" Directory="EXTFOLDER">
+      <Files Include="..\extension\**" />
+    </ComponentGroup>
+
+    <ComponentGroup Id="UpdaterFiles" Directory="INSTALLFOLDER">
+      <!-- File/@Source の相対パスは wix build の cwd 基準 (Files/@Include と違う)。wxs の場所に固定する -->
+      <Component><File Source="$(sys.SOURCEFILEDIR)update.ps1" KeyPath="yes" /></Component>
+      <Component><File Source="$(sys.SOURCEFILEDIR)host.ps1" KeyPath="yes" /></Component>
+      <Component><File Source="$(sys.SOURCEFILEDIR)host.bat" KeyPath="yes" /></Component>
+      <Component><File Source="$(sys.SOURCEFILEDIR)native-host-manifest.json" KeyPath="yes" /></Component>
+    </ComponentGroup>
+
+    <!-- native messaging host の登録。perUser なら HKCU、ALLUSERS=1 なら HKLM (always64) -->
+    <ComponentGroup Id="NativeHost" Directory="INSTALLFOLDER">
+      <Component Condition="NOT (ALLUSERS=1)">
+        <RegistryValue Root="HKCU" Key="Software\Google\Chrome\NativeMessagingHosts\jp.ippoan.claude_code_web_split_view"
+                       Type="string" KeyPath="yes" Value="[INSTALLFOLDER]native-host-manifest.json" />
+      </Component>
+      <Component Bitness="always64" Condition="ALLUSERS=1">
+        <RegistryValue Root="HKLM" Key="Software\Google\Chrome\NativeMessagingHosts\jp.ippoan.claude_code_web_split_view"
+                       Type="string" KeyPath="yes" Value="[INSTALLFOLDER]native-host-manifest.json" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- uninstall 時に (update.ps1 -Register で入れた人向けに) タスクを掃除する -->
+    <CustomAction Id="UnregisterUpdater" Directory="INSTALLFOLDER"
+                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File &quot;[INSTALLFOLDER]update.ps1&quot; -Unregister"
+                  Execute="deferred" Impersonate="yes" Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="UnregisterUpdater" After="InstallInitialize" Condition="REMOVE=&quot;ALL&quot;" />
+    </InstallExecuteSequence>
+
+    <!--
+      Chrome ポリシー (ALLUSERS=1 のときだけ)。ExtensionSettings は Chrome キー直下の単一 REG_SZ に
+      JSON を丸ごと入れる形でしか読まれない。Bitness="always64" が無いと WOW6432Node に落ちる。
+    -->
+    <ComponentGroup Id="ChromePolicy" Directory="INSTALLFOLDER">
+      <Component Bitness="always64" Condition="ALLUSERS=1">
+        <RegistryValue Root="HKLM"
+                       Key="Software\Policies\Google\Chrome"
+                       Name="ExtensionSettings"
+                       Type="string"
+                       KeyPath="yes"
+                       Value="{&quot;ibdmdncjfdpdmcakmdbdohieahjlkhoa&quot;:{&quot;installation_mode&quot;:&quot;force_installed&quot;,&quot;update_url&quot;:&quot;https://github.com/ippoan/claude-code-web-split-view/releases/latest/download/update.xml&quot;}}" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Main" Title="Claude Code Web Split View">
+      <ComponentGroupRef Id="ExtensionFiles" />
+      <ComponentGroupRef Id="UpdaterFiles" />
+      <ComponentGroupRef Id="NativeHost" />
+      <ComponentGroupRef Id="ChromePolicy" />
+    </Feature>
+  </Package>
+</Wix>

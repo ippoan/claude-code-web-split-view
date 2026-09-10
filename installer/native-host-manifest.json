@@ -1,0 +1,9 @@
+{
+  "name": "jp.ippoan.claude_code_web_split_view",
+  "description": "Claude Code Web Split View \u2014 local updater (runs update.ps1 on request)",
+  "path": "host.bat",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://ibdmdncjfdpdmcakmdbdohieahjlkhoa/"
+  ]
+}
