@@ -86,6 +86,9 @@ html.ccw-dragging #ccw-split iframe, html.ccw-dragging #root { pointer-events: n
 a[href^="/code/session_"] .ccw-open { margin-left: auto; margin-right: calc(var(--df-row-ctl, 24px) + 6px); padding: 0 4px; opacity: .35; font-size: 11px; line-height: 1; border-radius: 3px; }
 a[href^="/code/session_"]:hover .ccw-open { opacity: .7; }
 a[href^="/code/session_"] .ccw-open:hover { opacity: 1; background: rgba(128,128,128,.3); }
+/* ペインで開いているセッションの行 (= <a> の親の .group) に、claude.ai 自身の選択色を当てる (desktop 版の横並び時と同じ見え方) */
+.ccw-in-pane { background: var(--df-selected, rgba(255,255,255,.15)) !important; }
+.ccw-in-pane .ccw-open { opacity: 1; }
 `;
 
   const state = { panes: [], frac: 0.5 };   // panes: [{ path, title }], frac: ペイン領域の横幅比
@@ -122,6 +125,7 @@ a[href^="/code/session_"] .ccw-open:hover { opacity: 1; background: rgba(128,128
     document.documentElement.classList.toggle('ccw-active', active);
     box.hidden = !active;
     applyWidth();
+    decorate();   // 開閉に合わせてサイドバーの行色を更新
     // 既存の iframe は作り直さない (再読込されるので)。path が一致する要素を使い回す
     const old = new Map([...panesEl.children].map((el) => [el.dataset.path, el]));
     panesEl.replaceChildren(...state.panes.map((p) => {
@@ -194,10 +198,15 @@ a[href^="/code/session_"] .ccw-open:hover { opacity: 1; background: rgba(128,128
   // 行の右端には claude.ai 自身のホバー操作ボタン (<a> の兄弟、absolute、幅 --df-row-ctl) が乗るので、
   // ⧉ はその左に margin-right で逃がす (重なると押し分けられない — 2026-09-10 実機で指摘)
   const decorate = () => {
+    const open = new Set(state.panes.map((p) => p.path));
     for (const a of document.querySelectorAll('a[href^="/code/session_"]')) {
-      if (a.querySelector('.ccw-open') || a.closest('#ccw-split')) continue;
-      const s = document.createElement('span'); s.className = 'ccw-open'; s.title = '右のペインで開く (Ctrl/⌘+クリックでも)'; s.textContent = '⧉';
-      a.appendChild(s);
+      if (a.closest('#ccw-split')) continue;
+      if (!a.querySelector('.ccw-open')) {
+        const s = document.createElement('span'); s.className = 'ccw-open'; s.title = '右のペインで開く (Ctrl/⌘+クリックでも)'; s.textContent = '⧉';
+        a.appendChild(s);
+      }
+      // 行の色: ペインで開いている行に選択色 (React が再描画しても class は消えるだけなので毎回当て直す)
+      if (a.parentElement) a.parentElement.classList.toggle('ccw-in-pane', open.has(sessionPath(a.href)));
     }
   };
   let pending = false;
