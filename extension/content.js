@@ -69,7 +69,7 @@
   // 決着がつくまで呼び直される前提 (15 秒おきの ticker + 遷移時)。題や composer がまだ無い回は何も決めない
   // (v0.0.8〜0.0.10 は 1 回きりで、描画前に「規約外」と決めて二度と見なかった → 切り替わらないペインが出た)
   const attempts = new Map();   // path -> 判定を呼ばれた回数 (ログ用)
-  let enforceState = 'idle';    // ペインのバーに出す判定の段階 (top へ status で送る)
+  let enforceState = 'idle';    // ペインのバーに出す判定の段階 (外側のページへ status で送る)
   async function enforceModel(path, title, why) {
     if (!path || enforced.has(path) || enforcing) return null;
     const n = (attempts.get(path) || 0) + 1; attempts.set(path, n);
@@ -153,7 +153,7 @@
     let last = location.pathname;
     const report = () => { window.top.postMessage({ type: 'ccw:nav', path: location.pathname, title: document.title }, ORIGIN); };
     const enforceHere = () => { const p = sessionPath(location.href); if (p) enforceModel(p, headerTitle(), 'pane'); };
-    // 状態 (実行中か / モデル / 判定の段階) を 2 秒ごとに top へ送る → ペインのバーに出る
+    // 状態 (実行中か / モデル / 判定の段階) を 2 秒ごとに外側のページ (top frame。親セッションのことではない) へ送る → ペインのバーに出る
     const isRunning = () => [...document.querySelectorAll('button[aria-label]')].some((b) => /^(停止|Stop)$/i.test(b.getAttribute('aria-label') || ''));
     const status = () => { try { window.top.postMessage({ type: 'ccw:status', running: isRunning(), model: currentModel(), enforce: enforceState }, ORIGIN); } catch { } };
     setInterval(status, 2000);
