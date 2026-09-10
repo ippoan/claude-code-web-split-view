@@ -26,6 +26,68 @@
   const sessionPath = (href) => {
     try { const u = new URL(href, ORIGIN); if (u.origin !== ORIGIN) return null; const m = u.pathname.match(SESSION_RE); return m ? `/code/${m[1]}` : null; } catch { return null; }
   };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---- タイトル規約 (ippoan/claude-skills task-split §1) ------------------------------
+  //   親:  #p<issue> <題>            → Opus (Fable でも可)
+  //   子:  [S]/[O] #c<issue>-<n> <題>  または  [S]/[O] #p<issue>-c<子issue> <題>
+  //        [S] = Sonnet、それ以外 (= 既定) は Opus
+  //   [旧] #p… は交代前の旧親 (何もしない)
+  const parseTitle = (t) => {
+    const s = String(t || '').trim();
+    const m0 = s.match(/^\[(S|O|旧)\]\s*/i);
+    const tag = m0 ? m0[1].toUpperCase() : null;
+    const rest = m0 ? s.slice(m0[0].length) : s;
+    if (tag === '旧') return { role: 'old', issue: null, model: null };
+    const model = tag === 'S' ? 'sonnet' : 'opus';
+    let m;
+    if ((m = rest.match(/^#p(\d+)-c\d+(\s|$)/))) return { role: 'child', issue: m[1], model };
+    if ((m = rest.match(/^#c(\d+)-\d+(\s|$)/)))  return { role: 'child', issue: m[1], model };
+    if ((m = rest.match(/^#p(\d+)(\s|$)/)))       return { role: 'parent', issue: m[1], model: 'opus' };
+    return { role: null, issue: null, model: tag ? model : null };   // 規約外は触らない
+  };
+
+  // ---- モデルの強制 ---------------------------------------------------------------------
+  // composer 右下の「モデル: Opus 5」ボタン → メニュー (role=menuitemradio: Fable 5.1 / Opus 5 / Sonnet 5 / Haiku 4.5)
+  const MODEL_RULES = {
+    sonnet: { ok: /^Sonnet/i, pick: /^Sonnet/i },
+    opus:   { ok: /^(Opus|Fable)/i, pick: /^Opus/i },
+  };
+  const modelButton = () => [...document.querySelectorAll('button[aria-label]')].find((b) => /^(モデル|Model):/i.test(b.getAttribute('aria-label') || ''));
+  const currentModel = () => { const b = modelButton(); return b ? (b.getAttribute('aria-label') || '').replace(/^(モデル|Model):\s*/i, '').trim() : null; };
+  // 画面上部のセッション名ボタン (aria-label = "<題>、セッション名を変更")
+  const headerTitle = () => {
+    const b = [...document.querySelectorAll('button[aria-label]')].find((x) => /セッション名を変更$|rename/i.test(x.getAttribute('aria-label') || ''));
+    if (!b) return '';
+    return (b.getAttribute('aria-label') || '').replace(/、セッション名を変更$/, '').replace(/,?\s*rename( session)?$/i, '').trim();
+  };
+  let enforcing = false;
+  const enforced = new Set();   // このページで既に判定したセッション path
+  async function enforceModel(path, title, why) {
+    if (!path || enforced.has(path)) return null;
+    const want = parseTitle(title).model;
+    if (!want) { enforced.add(path); return null; }
+    // composer が出るまで待つ
+    for (let i = 0; i < 40 && !modelButton(); i++) await sleep(250);
+    const cur = currentModel();
+    if (!cur) return null;
+    enforced.add(path);
+    const rule = MODEL_RULES[want];
+    if (rule.ok.test(cur) || enforcing) return null;
+    enforcing = true;
+    try {
+      const btn = modelButton(); btn.click();
+      await sleep(600);
+      const item = [...document.querySelectorAll('[role="menuitemradio"]')].find((e) => rule.pick.test((e.innerText || '').trim()));
+      if (!item) { btn.click(); console.warn('[ccw] model menu item not found for', want); return null; }
+      item.click();
+      await sleep(600);
+      const after = currentModel();
+      console.log('[ccw] model', cur, '->', after, 'by title', JSON.stringify(title), why);
+      return after;
+    } finally { enforcing = false; }
+  }
+
   const linkTitle = (a) => {
     if (a.getAttribute('aria-label')) return a.getAttribute('aria-label').trim().slice(0, 80);
     const c = a.cloneNode(true); c.querySelectorAll('.ccw-open').forEach((x) => x.remove());
@@ -60,8 +122,9 @@
     // ペイン内で別セッションへ遷移したら親に知らせる (復元用)。SPA なので pathname を見張る
     let last = location.pathname;
     const report = () => { window.top.postMessage({ type: 'ccw:nav', path: location.pathname, title: document.title }, ORIGIN); };
-    report();
-    setInterval(() => { if (location.pathname !== last) { last = location.pathname; report(); } }, 1000);
+    const enforceHere = async () => { const p = sessionPath(location.href); if (!p) return; for (let i = 0; i < 40 && !headerTitle(); i++) await sleep(250); enforceModel(p, headerTitle(), 'pane'); };
+    report(); enforceHere();
+    setInterval(() => { if (location.pathname !== last) { last = location.pathname; report(); enforceHere(); } }, 1000);
     return;
   }
 
@@ -86,6 +149,9 @@ html.ccw-dragging #ccw-split iframe, html.ccw-dragging #root { pointer-events: n
 a[href^="/code/session_"] .ccw-open { margin-left: auto; margin-right: calc(var(--df-row-ctl, 24px) + 6px); padding: 0 4px; opacity: .35; font-size: 11px; line-height: 1; border-radius: 3px; }
 a[href^="/code/session_"]:hover .ccw-open { opacity: .7; }
 a[href^="/code/session_"] .ccw-open:hover { opacity: 1; background: rgba(128,128,128,.3); }
+a[href^="/code/session_"] .ccw-group { padding: 0 4px; opacity: .35; font-size: 11px; line-height: 1; border-radius: 3px; }
+a[href^="/code/session_"]:hover .ccw-group { opacity: .7; }
+a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,128,128,.3); }
 /* ペインで開いているセッションの行 (= <a> の親の .group) に、claude.ai 自身の選択色を当てる (desktop 版の横並び時と同じ見え方) */
 .ccw-in-pane { background: var(--df-selected, rgba(255,255,255,.15)) !important; }
 .ccw-in-pane .ccw-open { opacity: 1; }
@@ -176,11 +242,66 @@ a[href^="/code/session_"] .ccw-open:hover { opacity: 1; background: rgba(128,128
     const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
     if (!a) return;
     const p = sessionPath(a.href); if (!p) return;
+    if (e.target.closest && e.target.closest('.ccw-group')) {
+      e.preventDefault(); e.stopPropagation();
+      const info = parseTitle(linkTitle(a));
+      if (info.issue) openGroup(info.issue, { includeParent: p !== location.pathname });
+      return;
+    }
     const viaButton = e.target.closest && e.target.closest('.ccw-open');
     if (!viaButton && !(e.metaKey || e.ctrlKey)) return;
     e.preventDefault(); e.stopPropagation();
     openPane(p, linkTitle(a));
   }, true);
+
+  // ---- 親子グループ ------------------------------------------------------------------------
+  const sidebarSessions = () => [...document.querySelectorAll('a[href^="/code/session_"]')].filter((a) => !a.closest('#ccw-split'))
+    .map((a) => { const title = linkTitle(a); return { a, path: sessionPath(a.href), title, info: parseTitle(title) }; }).filter((x) => x.path);
+  const sessionTitleFor = (path) => { const x = sidebarSessions().find((y) => y.path === path); return x ? x.title : headerTitle(); };
+  // 同じ issue の親と子をまとめて右に開く (親が既にメインならそれは除く)
+  function openGroup(issue, { includeParent }) {
+    const members = sidebarSessions().filter((x) => x.info.issue === issue && x.info.role !== 'old');
+    const parent = members.find((x) => x.info.role === 'parent');
+    const children = members.filter((x) => x.info.role === 'child');
+    if (includeParent && parent) openPane(parent.path, parent.title);
+    for (const c of children) openPane(c.path, c.title);
+  }
+  // 親 (#p<issue>) を開いている間に、その子がサイドバーに現れたら自動で右に開く。
+  // 「親を開いたら子を全部開く」ではない (ユーザー指示 2026-09-10)。起動時点で既にある子は対象外で、
+  // 新しく現れた (または題が変わった) 子を、そのペインが閉じていれば開く。
+  const seenTitles = new Map();      // path -> 最後に見た題
+  let seenInitialized = false;
+  const openParentIssues = () => {
+    const issues = new Set();
+    const main = sessionPath(location.href);
+    if (main) { const i = parseTitle(sessionTitleFor(main)); if (i.role === 'parent') issues.add(i.issue); }
+    for (const p of state.panes) { const i = parseTitle(p.title); if (i.role === 'parent') issues.add(i.issue); }
+    return issues;
+  };
+  function autoOpenNewChildren(sessions) {
+    const changed = [];
+    for (const x of sessions) {
+      const prev = seenTitles.get(x.path);
+      if (prev === x.title) continue;
+      seenTitles.set(x.path, x.title);
+      if (seenInitialized) changed.push(x);
+    }
+    if (!seenInitialized) { seenInitialized = true; return; }   // 初回はいまある一覧を覚えるだけ
+    if (!changed.length) return;
+    const issues = openParentIssues(); if (!issues.size) return;
+    for (const x of changed) {
+      if (x.info.role !== 'child' || !issues.has(x.info.issue)) continue;
+      if (x.path === location.pathname || state.panes.some((p) => p.path === x.path)) continue;   // 既に出ている
+      console.log('[ccw] child appeared ->', x.title);
+      openPane(x.path, x.title);
+    }
+  }
+  // メイン側のモデル強制 (composer とタイトルが出てから)
+  async function enforceMain() {
+    const main = sessionPath(location.href); if (!main) return;
+    for (let i = 0; i < 40 && !sessionTitleFor(main); i++) await sleep(250);
+    enforceModel(main, sessionTitleFor(main), 'main');
+  }
 
   window.addEventListener('message', (e) => {
     if (e.origin !== ORIGIN || !e.data || typeof e.data.type !== 'string') return;
@@ -205,9 +326,15 @@ a[href^="/code/session_"] .ccw-open:hover { opacity: 1; background: rgba(128,128
         const s = document.createElement('span'); s.className = 'ccw-open'; s.title = '右のペインで開く (Ctrl/⌘+クリックでも)'; s.textContent = '⧉';
         a.appendChild(s);
       }
+      // 親 (#p<issue>) の行には「親と子をまとめて右に開く」⊞ を足す
+      if (!a.querySelector('.ccw-group') && parseTitle(linkTitle(a)).role === 'parent') {
+        const g = document.createElement('span'); g.className = 'ccw-group'; g.title = '親と子 (#c…/#p…-c…) をまとめて右に開く'; g.textContent = '⊞';
+        a.insertBefore(g, a.querySelector('.ccw-open'));
+      }
       // 行の色: ペインで開いている行に選択色 (React が再描画しても class は消えるだけなので毎回当て直す)
       if (a.parentElement) a.parentElement.classList.toggle('ccw-in-pane', open.has(sessionPath(a.href)));
     }
+    try { autoOpenNewChildren(sidebarSessions()); } catch (e) { console.warn('[ccw] autoOpenNewChildren', e); }
   };
   let pending = false;
   new MutationObserver(() => { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; decorate(); }); }).observe(document.documentElement, { childList: true, subtree: true });
@@ -223,6 +350,12 @@ a[href^="/code/session_"] .ccw-open:hover { opacity: 1; background: rgba(128,128
     state.panes = state.panes.filter((p) => p.path !== location.pathname);
     decorate();
     if (state.panes.length) render();
+    // サイドバーが出そろってから (React の初回描画待ち)
+    for (let i = 0; i < 40 && !sidebarSessions().length; i++) await sleep(250);
+    decorate(); enforceMain();
+    // SPA 遷移 (サイドバーのクリック等) でメインが変わったらモデル判定をやり直す
+    let lastPath = location.pathname;
+    setInterval(() => { if (location.pathname !== lastPath) { lastPath = location.pathname; decorate(); enforceMain(); } }, 1000);
   })();
 
   // 試験・デバッグ用の口 (javascript_tool から window.ccwSplit.open('/code/session_…'))
