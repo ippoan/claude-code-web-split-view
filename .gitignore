@@ -4,3 +4,5 @@
 *.msi
 dist/
 update.log
+mods/*/types/
+mods/*/.claude-plugin/types/

@@ -46,6 +46,31 @@
   30 秒は 1 秒おき、その後は 15 秒おきに、決着 (期待どおり / 切り替えた / 規約外) がつくまで見直す。
   決着後は手で変えたものを尊重する
 
+#### ブラウザで開かなくても直す — Claude Code の mod `model-by-title`
+
+上のモデル強制は claude.ai/code でそのセッションを開いている間しか効かない。開かずに済ませたいときは
+Claude Code 側の mod (function hooks) [`mods/model-by-title`](./mods/model-by-title) を入れる。
+
+- 親が**子からのメッセージ** (起動報告など) を受けると発火し、`list_sessions({ linked: true })` で
+  自分が起動した子を見直す。規約と違うモデルの子を `set_session_model` で切り替える
+  (`set_session_model` は自分自身には効かないので、起動元の親から直す。自分が起動した子を同じか
+  安いモデルへ変えるのは通常は確認なしで通る — `[S]` の子を Opus → Sonnet はこれに当たる)
+- 今のモデルは子の transcript の最後の応答から読む。デスクトップアプリの `get_session` の `model` は
+  claude.ai 側 (Remote Control) での切り替えを拾わず、古い値のまま残ることがある
+- 判定は子 1 つにつき 1 回 (期待どおり / 切り替えた / 失敗)。以後は手で変えたものを尊重する。
+  結果はトーストと plugin の `$.store` の `log` に残る
+- 子の最初の数ターンは元のモデルで走る (切り替えは次のターンから)。子が親へ何も送らなければ何もしない
+
+導入 (Claude Code 2.1.260 以上):
+
+```
+# ~/.claude/settings.json の env に "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1"
+claude plugin marketplace add ippoan/claude-code-web-split-view
+claude plugin install model-by-title@claude-code-web-split-view
+```
+
+入れた / 更新した plugin は起動中のセッションでは読み直されない (新しく起動した親から効く)。
+
 ペインは何枚でも増やせる (1 枚あたり最小 360px、あふれたら横スクロール)。
 構成は `chrome.storage.local` に残り、リロードで復元する。
 
@@ -131,6 +156,7 @@ extension/            MV3 拡張本体 (content.js = 分割画面、background.j
 installer/main.wxs    MSI (WiX v5、perUserOrMachine)
 installer/update.ps1  更新スクリプト (native host / 手動 / 任意でタスク登録)
 installer/host.ps1    native messaging host (アイコンクリック更新の実体)
+mods/model-by-title/  Claude Code の mod (子のモデルを題規約に合わせる)。.claude-plugin/marketplace.json から配る
 ```
 
 ## 既知の制約
