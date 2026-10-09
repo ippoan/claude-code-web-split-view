@@ -2,8 +2,8 @@ import { test, expect } from 'claude-code/testing'
 import { lastModel, planFor, transcriptDir } from '../hooks/rules'
 
 test('[S] の子が Opus なら Sonnet へ', async () => {
-  expect(planFor('[S] #c1193-1 比較の画面', 'claude-opus-5-5')).toBe('claude-sonnet-5-5')
-  expect(planFor('[S] #c1193-1 比較の画面', 'claude-sonnet-5-5')).toBe(null)
+  expect(planFor('[S] #p1193-c1 比較の画面', 'claude-opus-5-5')).toBe('claude-sonnet-5-5')
+  expect(planFor('[S] #p1193-c1 比較の画面', 'claude-sonnet-5-5')).toBe(null)
 })
 
 test('親が Sonnet なら Opus へ、Fable はそのまま', async () => {
