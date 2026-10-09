@@ -56,7 +56,7 @@ Claude Code 側の mod (function hooks) [`mods/model-by-title`](./mods/model-by-
 
 - 親が**子からのメッセージ** (起動報告など) を受けると発火する。デスクトップでは子の `send_message` は
   `session.receive` も `prompt.submit` も通らず、`classic.UserPromptSubmit` の `prompt` に
-  `<\~cross-session-message …>` を含む形で届くので、それを含むときだけ動く (ユーザーの入力では動かない)。
+  `<cross-session-message …>` を含む形で届くので、それを含むときだけ動く (ユーザーの入力では動かない)。
   `list_sessions` の中から題規約に当たり
   `get_session` の `parentSessionId` が自分のもの (= 自分が起動した子) を見直す。規約と違うモデルの子を `set_session_model` で切り替える
   (`set_session_model` は自分自身には効かないので、起動元の親から直す。自分が起動した子を同じか

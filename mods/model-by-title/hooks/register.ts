@@ -4,7 +4,7 @@ import { expectedFamily, lastModel, planFor, transcriptDir } from './rules'
 // 親が子からのメッセージ (起動報告など) を受けたら、自分が起動した子を見直し、
 // タイトル規約と違うモデルの子を set_session_model で切り替える。
 // - きっかけ: デスクトップでは子の send_message は session.receive も prompt.submit も通らず、
-//   classic.UserPromptSubmit の e.prompt に <\~cross-session-message …> を含む形で届く。
+//   classic.UserPromptSubmit の e.prompt に <cross-session-message …> を含む形で届く。
 //   それを含むときだけ見直す (ユーザーの入力では動かさない)
 // - set_session_model は自分自身には効かないので、起動元の親から直す。
 //   mod からの呼び出しも auto mode の判定を通るので、permissions.allow に
@@ -13,7 +13,7 @@ import { expectedFamily, lastModel, planFor, transcriptDir } from './rules'
 // - 1 つの子につき判定は 1 回 (期待どおり / 切り替えた / 失敗)。以後は手で変えたものを尊重する
 // - $ を渡す先は最上位の function (claude plugin validate の要件)。状態はモジュール変数に置く
 const SERVER = 'ccd_session_mgmt'
-const MARKER = '<\\~cross-session-message'
+const MARKER = '<' + 'cross-session-message'
 
 type Row = { sessionId: string; title?: string; cwd?: string; isArchived?: boolean }
 type Session = { sessionId?: string; parentSessionId?: string }
