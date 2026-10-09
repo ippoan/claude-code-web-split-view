@@ -9,12 +9,14 @@ import { expectedFamily, lastModel, planFor, transcriptDir } from './rules'
 // - 1 つの子につき判定は 1 回 (期待どおり / 切り替えた / 失敗)。以後は手で変えたものを尊重する
 const SERVER = 'ccd_session_mgmt'
 
-type Row = { sessionId: string; title?: string; cwd?: string; isArchived?: boolean; startedBy?: string }
+type Row = { sessionId: string; title?: string; cwd?: string; isArchived?: boolean }
+type Session = { sessionId?: string; parentSessionId?: string }
 
 const textOf = (r: { content: { type: string; text?: string }[] }) => r.content.find(c => c.type === 'text')?.text ?? ''
 
 export const register: Register = on => {
   let isBusy = false
+  const othersChildren = new Set<string>() // 他の親の子。get_session を毎回打たない
 
   // 読み込まれた印 (子からメッセージが来るまで何もしないので、これが無いと入ったか分からない)
   on('session.start', async ($, e, next) => {
@@ -29,11 +31,20 @@ export const register: Register = on => {
     isBusy = true
     try {
       const home = (await $.env.get('HOME')) ?? ''
-      const rows = JSON.parse(textOf(await $.mcp.call(SERVER, 'list_sessions', { linked: true, limit: 50 }))) as Row[]
+      const me = (JSON.parse(textOf(await $.mcp.call(SERVER, 'get_session', { session_id: 'self' }))) as Session).sessionId
+      // linked: true は start_session の家族だけで、spawn_task のチップから起動した子は入らない。
+      // 全件から題で絞り、get_session の parentSessionId で自分の子か確かめる
+      const rows = JSON.parse(textOf(await $.mcp.call(SERVER, 'list_sessions', { limit: 50 }))) as Row[]
       for (const row of rows) {
         if (row.isArchived || !row.cwd || expectedFamily(row.title) === null) continue
         const key = `settled:${row.sessionId}`
-        if (await $.store.get(key)) continue
+        if (othersChildren.has(row.sessionId) || (await $.store.get(key))) continue
+        const info = JSON.parse(textOf(await $.mcp.call(SERVER, 'get_session', { session_id: row.sessionId }))) as Session
+        if (!me) continue
+        if (info.parentSessionId !== me) {
+          othersChildren.add(row.sessionId)
+          continue
+        }
 
         const model = await currentModel($, transcriptDir(home, row.cwd))
         if (model === undefined) continue
