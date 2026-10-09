@@ -1,0 +1,16 @@
+{
+  "name": "claude-code-web-split-view",
+  "owner": {
+    "name": "ippoan"
+  },
+  "plugins": [
+    {
+      "name": "model-by-title",
+      "source": "./mods/model-by-title",
+      "description": "子セッションのモデルをタイトル規約 ([S] = Sonnet / [O]・タグ無し = Opus) に合わせる Claude Mod (要 CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1)"
+    }
+  ],
+  "metadata": {
+    "description": "claude-code-web-split-view の Claude Code 側プラグイン (Claude Mods)"
+  }
+}
