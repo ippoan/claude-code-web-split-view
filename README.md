@@ -69,7 +69,9 @@ claude plugin marketplace add ippoan/claude-code-web-split-view
 claude plugin install model-by-title@claude-code-web-split-view
 ```
 
-入れた / 更新した plugin は起動中のセッションでは読み直されない (新しく起動した親から効く)。
+入れた / 更新した plugin は起動中のセッションでは読み直されない。新しく起動した親から効くほか、起動中の親は
+入力欄の `/reload-plugins` で読み直せる (更新は先に `claude plugin update model-by-title@claude-code-web-split-view`)。
+読み込まれるとステータスラインに `model-by-title` が出る。
 
 ペインは何枚でも増やせる (1 枚あたり最小 360px、あふれたら横スクロール)。
 構成は `chrome.storage.local` に残り、リロードで復元する。

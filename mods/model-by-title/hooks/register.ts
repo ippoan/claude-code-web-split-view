@@ -16,6 +16,13 @@ const textOf = (r: { content: { type: string; text?: string }[] }) => r.content.
 export const register: Register = on => {
   let isBusy = false
 
+  // 読み込まれた印 (子からメッセージが来るまで何もしないので、これが無いと入ったか分からない)
+  on('session.start', async ($, e, next) => {
+    const result = await next(e)
+    $.ui.status('model-by-title')
+    return result
+  })
+
   on('session.receive', { origin: { kind: 'peer' } }, async ($, e, next) => {
     const result = await next(e)
     if (isBusy) return result
