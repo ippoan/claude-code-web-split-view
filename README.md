@@ -54,7 +54,10 @@
 上のモデル強制は claude.ai/code でそのセッションを開いている間しか効かない。開かずに済ませたいときは
 Claude Code 側の mod (function hooks) [`mods/model-by-title`](./mods/model-by-title) を入れる。
 
-- 親が**子からのメッセージ** (起動報告など) を受けると発火し、`list_sessions` の中から題規約に当たり
+- 親が**子からのメッセージ** (起動報告など) を受けると発火する。デスクトップでは子の `send_message` は
+  `session.receive` も `prompt.submit` も通らず、`classic.UserPromptSubmit` の `prompt` に
+  `<\~cross-session-message …>` を含む形で届くので、それを含むときだけ動く (ユーザーの入力では動かない)。
+  `list_sessions` の中から題規約に当たり
   `get_session` の `parentSessionId` が自分のもの (= 自分が起動した子) を見直す。規約と違うモデルの子を `set_session_model` で切り替える
   (`set_session_model` は自分自身には効かないので、起動元の親から直す。自分が起動した子を同じか
   安いモデルへ変えるのは通常は確認なしで通る — `[S]` の子を Opus → Sonnet はこれに当たる)
@@ -72,6 +75,9 @@ Claude Code 側の mod (function hooks) [`mods/model-by-title`](./mods/model-by-
 claude plugin marketplace add ippoan/claude-code-web-split-view
 claude plugin install model-by-title@claude-code-web-split-view
 ```
+
+mod からの `set_session_model` も auto mode の判定を通るので、`~/.claude/settings.json` の
+`permissions.allow` に `mcp__ccd_session_mgmt__set_session_model` を足す。
 
 入れた / 更新した plugin は起動中のセッションでは読み直されない。新しく起動した親から効くほか、起動中の親は
 入力欄の `/reload-plugins` で読み直せる (更新は先に `claude plugin update model-by-title@claude-code-web-split-view`)。
