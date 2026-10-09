@@ -1,8 +1,8 @@
 // タイトル規約 (ippoan/claude-skills task-split §1)。claude-code-web-split-view の content.js と同じ判定。
 //   親:  #p<issue> <題>                                → Opus (Fable でも可)
-//   子:  [S]/[O] #c<issue>-<n> <題>  /  [S]/[O] #p<issue>-c<子issue>(-<n>) <題>   (-<n> は再起票の連番)
+//   子:  [S]/[O] #p<issue>-c<番号>(-<n>) <題>   (c の後は子 issue 番号でも分岐番号でもよい。-<n> は再起票の連番)
 //        [S] = Sonnet、それ以外 (= 既定) は Opus
-//   [旧] #p… は旧親 (何もしない)。規約外も触らない
+//   [旧] #p… は旧親 (何もしない)。規約外も触らない。旧形 #c<issue>-<n> は廃止 (#19) で規約外
 export type Family = 'sonnet' | 'opus'
 
 export const cleanTitle = (t: string | undefined): string =>
@@ -15,8 +15,9 @@ export const expectedFamily = (title: string | undefined): Family | null => {
   const rest = m0 ? s.slice(m0[0].length) : s
   if (tag === '旧') return null
   const tagged: Family = tag === 'S' ? 'sonnet' : 'opus'
-  if (/^#p\d+-c\d+(?:-\d+)?(\s|$)/.test(rest) || /^#c\d+-\d+(?:-\d+)?(\s|$)/.test(rest)) return tagged
+  if (/^#p\d+-c\d+(?:-\d+)?(\s|$)/.test(rest)) return tagged
   if (/^#p\d+(\s|$)/.test(rest)) return 'opus'
+  if (/^#c\d/.test(rest)) return null // 廃止した旧形 (#19)。タグがあっても触らない
   return tag ? tagged : null
 }
 

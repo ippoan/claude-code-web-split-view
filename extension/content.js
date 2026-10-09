@@ -30,12 +30,13 @@
 
   // ---- タイトル規約 (ippoan/claude-skills task-split §1) ------------------------------
   //   親:  #p<issue> <題>            → Opus (Fable でも可)
-  //   子:  [S]/[O] #c<issue>-<n> <題>  または  [S]/[O] #p<issue>-c<子issue>(-<n>) <題>
+  //   子:  [S]/[O] #p<issue>-c<番号>(-<n>) <題>   (c の後は子 issue 番号でも分岐番号でもよい。見分けない)
   //        [S] = Sonnet、それ以外 (= 既定) は Opus
   //        末尾の -<n> は「同じ子 issue への再起票」の連番 (例: #p135-c211-2 = 親135・子issue211・2本目)。
   //        実機では普通に付く (無いことも) ので両対応 — 必須にすると付いた側が規約外に落ちる
   //        (#p135-c211-2 … の行がこれで自動オープン/⊞の対象から漏れていた — 実機 2026-09-10)
   //   [旧] #p… は交代前の旧親 (何もしない)
+  //   旧形 #c<issue>-<n> は廃止 (ippoan/claude-code-web-split-view#19)。規約外として扱う
   // サイドバーの行頭に付く状態アイコンは icon font の私用領域文字 (例 U+E07F) として textContent に混ざる。
   // ゼロ幅文字と一緒に落としてから規約を読む (c213 の行がこれで規約外に見えていた — 実機 2026-09-10)
   const cleanTitle = (t) => String(t || '').replace(/[\uE000-\uF8FF\u200B-\u200D\u2060\uFEFF]/g, '').replace(/\s+/g, ' ').trim();
@@ -48,8 +49,8 @@
     const model = tag === 'S' ? 'sonnet' : 'opus';
     let m;
     if ((m = rest.match(/^#p(\d+)-c\d+(?:-\d+)?(\s|$)/))) return { role: 'child', issue: m[1], model };
-    if ((m = rest.match(/^#c(\d+)-\d+(?:-\d+)?(\s|$)/)))  return { role: 'child', issue: m[1], model };
     if ((m = rest.match(/^#p(\d+)(\s|$)/)))       return { role: 'parent', issue: m[1], model: 'opus' };
+    if (/^#c\d/.test(rest)) return { role: null, issue: null, model: null };   // 廃止した旧形 (#19)。タグがあっても触らない
     return { role: null, issue: null, model: tag ? model : null };   // 規約外は触らない
   };
 
@@ -423,7 +424,7 @@ a[href^="/code/session_"] .ccw-group:hover { opacity: 1; background: rgba(128,12
       }
       // 親 (#p<issue>) の行には「親と子をまとめて右に開く」⊞ を足す
       if (!a.querySelector('.ccw-group') && parseTitle(linkTitle(a)).role === 'parent') {
-        const g = document.createElement('span'); g.className = 'ccw-group'; g.title = '親と子 (#c…/#p…-c…) をまとめて右に開く'; g.textContent = '⊞';
+        const g = document.createElement('span'); g.className = 'ccw-group'; g.title = '親と子 (#p…-c…) をまとめて右に開く'; g.textContent = '⊞';
         a.insertBefore(g, a.querySelector('.ccw-open'));
       }
       // 行の色: ペインで開いている行に選択色 (React が再描画しても class は消えるだけなので毎回当て直す)

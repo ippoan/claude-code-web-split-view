@@ -1,6 +1,6 @@
 {
   "name": "model-by-title",
-  "version": "0.2.1",
-  "description": "親が子からのメッセージを受けたら、自分が起動した子のうちタイトル規約 ([S] / [O] / #c) と違うモデルのものを set_session_model で切り替える Claude Mod (function hooks)",
+  "version": "0.3.0",
+  "description": "親が子からのメッセージを受けたら、自分が起動した子のうちタイトル規約 ([S] / [O] / #p…-c…) と違うモデルのものを set_session_model で切り替える Claude Mod (function hooks)",
   "author": { "name": "ippoan" }
 }

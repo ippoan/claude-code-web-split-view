@@ -32,9 +32,12 @@
 | タイトル | 役 | 期待するモデル |
 |---|---|---|
 | `#p<issue> <題>` | 親 | Opus (Fable でも可) |
-| `[S] #c<issue>-<n> <題>` / `[S] #p<issue>-c<子issue> <題>` | 子 | Sonnet |
-| `[O] #c<issue>-<n> <題>` / タグ無しの子 | 子 | Opus (Fable でも可) |
+| `[S] #p<issue>-c<番号>(-<n>) <題>` | 子 | Sonnet |
+| `[O] #p<issue>-c<番号>(-<n>) <題>` / タグ無しの子 | 子 | Opus (Fable でも可) |
 | `[旧] #p<issue> <題>` | 旧親 | 触らない |
+
+`c` の後は子の issue 番号でも分岐番号でもよい (見分けない)。旧形 `#c<issue>-<n>` は廃止した —
+その題の子は規約外になり、子の自動展開・⊞・モデル強制・`model-by-title` の対象から外れる。
 
 - **子を右に開く**: 親をメイン (またはペイン) で開いている間、サイドバーにあるその issue の子のうち
   ペインに出ていないものを自動で開く (起動時点で既にある子も、あとから spawn されて現れた子も)。
@@ -51,10 +54,11 @@
 上のモデル強制は claude.ai/code でそのセッションを開いている間しか効かない。開かずに済ませたいときは
 Claude Code 側の mod (function hooks) [`mods/model-by-title`](./mods/model-by-title) を入れる。
 
-- 親が**子からのメッセージ** (起動報告など) を受けると発火し、`list_sessions({ linked: true })` で
-  自分が起動した子を見直す。規約と違うモデルの子を `set_session_model` で切り替える
+- 親が**子からのメッセージ** (起動報告など) を受けると発火し、`list_sessions` の中から題規約に当たり
+  `get_session` の `parentSessionId` が自分のもの (= 自分が起動した子) を見直す。規約と違うモデルの子を `set_session_model` で切り替える
   (`set_session_model` は自分自身には効かないので、起動元の親から直す。自分が起動した子を同じか
   安いモデルへ変えるのは通常は確認なしで通る — `[S]` の子を Opus → Sonnet はこれに当たる)
+  (`list_sessions({ linked: true })` は `start_session` の家族だけで、spawn_task のチップから起動した子は入らない)
 - 今のモデルは子の transcript の最後の応答から読む。デスクトップアプリの `get_session` の `model` は
   claude.ai 側 (Remote Control) での切り替えを拾わず、古い値のまま残ることがある
 - 判定は子 1 つにつき 1 回 (期待どおり / 切り替えた / 失敗)。以後は手で変えたものを尊重する。
